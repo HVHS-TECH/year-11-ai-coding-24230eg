@@ -1,15 +1,43 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>My AI game</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Tetris</title>
+	<style>
+		body { font-family: system-ui, -apple-system, Roboto, Arial; background:#111; color:#fff; display:flex; gap:20px; align-items:flex-start; padding:24px }
+		h1{margin:0 0 12px 0}
+		#game { background:#000; image-rendering:pixelated }
+		#next { background:#000; image-rendering:pixelated }
+		.panel { display:flex; flex-direction:column; gap:8px }
+		.info { background:#0b0b0b; padding:12px; border-radius:6px }
+		button { padding:8px 12px }
+	</style>
 </head>
 <body>
 
-<h1>AI game goes here</h1>
+	<div class="panel">
+		<h1>Tetris</h1>
+		<div class="info">
+			<div>Score: <span id="score">0</span></div>
+			<div>Lines: <span id="lines">0</span></div>
+			<div>Level: <span id="level">1</span></div>
+		</div>
+		<p style="margin:8px 0 0 0; font-size:13px">Controls: ← → to move, ↑ to rotate, ↓ to soft drop, Space to hard drop, P to pause</p>
+		<div style="margin-top:8px"><button id="restart">Restart</button></div>
+	</div>
 
+	<canvas id="game" width="300" height="600"></canvas>
 
+	<div class="panel">
+		<div class="info">
+			<div style="margin-bottom:8px">Next</div>
+			<canvas id="next" width="120" height="120"></canvas>
+		</div>
+		<div style="margin-top:12px; font-size:13px; max-width:200px">Open this file in a browser to play locally.</div>
+	</div>
 
-<script src="game.js"></script>
+	<script src="game.js"></script>
 </body>
 </html>
 
