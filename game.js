@@ -14,6 +14,58 @@ canvas.height = ROWS * BLOCK;
 
 const colors = [null, '#00f0f0', '#0000f0', '#f0a000', '#f0f000', '#00f000', '#a000f0', '#f00000'];
 
+// Simple WebAudio-based sound manager (no external files)
+class AudioManager {
+	constructor() {
+		this.ctx = null;
+		this.gain = null;
+		this.muted = false;
+		this.volume = 0.8;
+	}
+	_init() {
+		if (this.ctx) return;
+		this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+		this.gain = this.ctx.createGain();
+		this.gain.gain.value = this.volume;
+		this.gain.connect(this.ctx.destination);
+	}
+	resume() {
+		this._init();
+		if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+	}
+	setVolume(v) { this.volume = v; if (this.gain) this.gain.gain.value = this.muted ? 0 : v; }
+	setMuted(m) { this.muted = m; if (this.gain) this.gain.gain.value = m ? 0 : this.volume; }
+	playTone(freq, duration = 0.08, type = 'sine', when = 0, decay = 0.02) {
+		this._init();
+		if (!this.gain) return;
+		const o = this.ctx.createOscillator();
+		const g = this.ctx.createGain();
+		o.type = type;
+		o.frequency.value = freq;
+		o.connect(g);
+		g.connect(this.gain);
+		const t = this.ctx.currentTime + when;
+		g.gain.setValueAtTime(0.0001, t);
+		g.gain.exponentialRampToValueAtTime(1.0, t + 0.01);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + duration + decay);
+		o.start(t);
+		o.stop(t + duration + decay + 0.01);
+	}
+	playMove() { this.playTone(800, 0.05, 'sine'); }
+	playRotate(){ this.playTone(1000, 0.08, 'triangle'); }
+	playDrop(){ this.playTone(600, 0.06, 'sawtooth'); }
+	playLineClear(lines){
+		const base = 420;
+		for (let i = 0; i < Math.min(lines,4); i++) {
+			this.playTone(base + i*140, 0.08, 'sine', i*0.06);
+		}
+	}
+	playLevelUp(){ this.playTone(1200, 0.18, 'sawtooth'); }
+	playGameOver(){ this.playTone(140, 0.5, 'sine'); this.playTone(80,0.5,'sine',0.06); }
+}
+
+const audio = new AudioManager();
+
 function createMatrix(w, h) {
 	const m = [];
 	while (h--) m.push(new Array(w).fill(0));
@@ -122,6 +174,7 @@ function playerDrop() {
 	if (collide(arena, player)) {
 		player.pos.y--;
 		merge(arena, player);
+		audio.playDrop();
 		resetPlayer();
 		sweep();
 		if (collide(arena, player)) {
@@ -129,6 +182,7 @@ function playerDrop() {
 			arena.forEach(row => row.fill(0));
 			player.score = 0; player.lines = 0; player.level = 1;
 			updateScore();
+			audio.playGameOver();
 		}
 	}
 	dropCounter = 0;
@@ -137,6 +191,7 @@ function playerDrop() {
 function playerMove(dir) {
 	player.pos.x += dir;
 	if (collide(arena, player)) player.pos.x -= dir;
+	else audio.playMove();
 }
 
 function playerRotate(dir) {
@@ -148,6 +203,7 @@ function playerRotate(dir) {
 		offset = -(offset + (offset > 0 ? 1 : -1));
 		if (offset > player.matrix[0].length) { rotate(player.matrix, -dir); player.pos.x = pos; return; }
 	}
+	audio.playRotate();
 }
 
 function resetPlayer() {
@@ -166,7 +222,8 @@ function draw() {
 
 function drawNext() {
 	nextCtx.fillStyle = '#000';
-	nextCtx.fillRect(0,0,nextCanvas.width,nextCanvas.height);
+	const oldLevel = player.level;
+	outer: for (let y = arena.length -1; y >= 0; --y) {
 	const size = player.matrix ? player.matrix.length : 4;
 	const scale = BLOCK * 0.8;
 	const nx = 1; const ny = 1;
@@ -176,10 +233,12 @@ function drawNext() {
 	for (let y = 0; y < m.length; y++) {
 		for (let x = 0; x < m[y].length; x++) {
 			const v = m[y][x];
-			if (v) {
-				nextCtx.fillStyle = colors[v];
-				nextCtx.fillRect((x + nx) * (scale/1.5), (y + ny) * (scale/1.5), (scale/1.5)-2, (scale/1.5)-2);
-			}
+		player.score += (rowCount * 100) * rowCount;
+		player.lines += rowCount;
+		player.level = Math.floor(player.lines / 10) + 1;
+		updateScore();
+		audio.playLineClear(rowCount);
+		if (player.level > oldLevel) audio.playLevelUp();
 		}
 	}
 }
@@ -220,6 +279,7 @@ document.addEventListener('keydown', event => {
 		while (!collide(arena, player)) player.pos.y++;
 		player.pos.y--;
 		merge(arena, player);
+		audio.playDrop();
 		resetPlayer();
 		sweep();
 		dropCounter = 0;
@@ -234,3 +294,31 @@ document.getElementById('restart').addEventListener('click', () => {
 });
 
 requestAnimationFrame(update);
+
+// Resume audio on first user interaction (unlocks Autoplay restrictions)
+function unlockAudio() {
+	audio.resume();
+	document.removeEventListener('keydown', unlockAudio);
+	document.removeEventListener('pointerdown', unlockAudio);
+	document.removeEventListener('click', unlockAudio);
+}
+document.addEventListener('keydown', unlockAudio);
+document.addEventListener('pointerdown', unlockAudio);
+document.addEventListener('click', unlockAudio);
+
+// Hook UI controls
+const muteBtn = document.getElementById('muteToggle');
+const vol = document.getElementById('volume');
+if (muteBtn) muteBtn.addEventListener('click', () => {
+	audio.setMuted(!audio.muted);
+	muteBtn.textContent = audio.muted ? 'Unmute' : 'Mute';
+});
+if (vol) vol.addEventListener('input', (e) => {
+	const v = parseFloat(e.target.value);
+	audio.setVolume(v);
+});
+
+// Ensure restart resumes audio as well
+document.getElementById('restart').addEventListener('click', () => {
+	audio.resume();
+});
